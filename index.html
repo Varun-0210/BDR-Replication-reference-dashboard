@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BDR replication report</title>
+<style>
+:root {
+  --bg: #f4f5f7; --panel: #ffffff; --ink: #1b2333; --muted: #626c80; --line: #e1e4ea;
+  --accent: #2f4fd1;
+  --ok: #1b8f5f; --okbg: #e1f4ec;
+  --bad: #cf3434; --badbg: #fbe6e6;
+  --warn: #a96a00; --warnbg: #fff1d1;
+  --idle: #6b7488; --idlebg: #eceef2;
+  --font: "Segoe UI", Roboto, "Helvetica Neue", Arial, system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #121722; --panel: #1b2230; --ink: #e8ecf4; --muted: #9aa5bb; --line: #2a3347;
+    --accent: #8aa2ff;
+    --ok: #4cc790; --okbg: #163a2d;
+    --bad: #ff7b7b; --badbg: #4a2125;
+    --warn: #f0b84a; --warnbg: #43351a;
+    --idle: #98a2b8; --idlebg: #28303f;
+  }
+}
+*, *::before, *::after { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 var(--font); }
+main { max-width: 80rem; margin: 0 auto; padding: 1.5rem 1rem 3rem; }
+h1 { font-size: 1.6rem; margin: 0; letter-spacing: -.01em; }
+h2 { font-size: 1.05rem; margin: 0 0 .75rem; }
+.muted { color: var(--muted); }
+button, input, select { font: inherit; color: inherit; }
+:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+.top { display: flex; flex-wrap: wrap; gap: 1rem; justify-content: space-between; align-items: flex-end; }
+.top p { margin: .25rem 0 0; }
+.datebar { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+.datebar label { display: flex; gap: .5rem; align-items: center; font-weight: 600; }
+.btn {
+  border: 1px solid var(--line); background: var(--panel); border-radius: .5rem;
+  padding: .4rem .8rem; cursor: pointer; font-weight: 600;
+}
+.btn:hover { border-color: var(--accent); }
+input[type="date"], input[type="search"], select {
+  border: 1px solid var(--line); background: var(--panel); border-radius: .5rem; padding: .4rem .6rem;
+}
+.banner { margin: 1rem 0 0; padding: .6rem .9rem; border-radius: .5rem; background: var(--warnbg); color: var(--warn); font-weight: 600; }
+.banner[hidden] { display: none; }
+
+.cards { display: grid; gap: .75rem; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); margin: 1.25rem 0; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: .75rem; padding: .8rem 1rem; }
+.card .k { color: var(--muted); font-size: .85rem; font-weight: 600; }
+.card .v { font-size: 1.7rem; font-weight: 700; line-height: 1.2; font-variant-numeric: tabular-nums; }
+.card .s { color: var(--muted); font-size: .8rem; min-height: 1.2em; }
+.v.bad { color: var(--bad); }
+.v.ok { color: var(--ok); }
+
+.attention { background: var(--badbg); color: var(--bad); border-radius: .5rem; padding: .6rem .9rem; margin-bottom: 1.25rem; font-weight: 600; }
+.attention[hidden] { display: none; }
+
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: .75rem; padding: 1rem; margin-bottom: 1.25rem; }
+.scroll { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: .5rem .6rem; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th { font-size: .85rem; color: var(--muted); font-weight: 600; }
+th button { background: none; border: 0; padding: 0; font-weight: 600; color: inherit; cursor: pointer; }
+th[aria-sort="ascending"] button::after { content: " \25B2"; font-size: .7em; }
+th[aria-sort="descending"] button::after { content: " \25BC"; font-size: .7em; }
+td.num, th.num { text-align: right; }
+.cat-table td:first-child { font-weight: 600; }
+
+.filters { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; margin-bottom: .75rem; }
+.filters input[type="search"] { min-width: 14rem; }
+.tabs { display: flex; gap: .25rem; margin-left: auto; }
+.tabs button { border: 1px solid var(--line); background: transparent; padding: .35rem .9rem; border-radius: .5rem; cursor: pointer; font-weight: 600; }
+.tabs button[aria-selected="true"] { background: var(--accent); border-color: var(--accent); color: var(--panel); }
+
+.pill { display: inline-block; padding: .05rem .55rem; border-radius: 999px; font-size: .8rem; font-weight: 700; }
+.pill.ok { background: var(--okbg); color: var(--ok); }
+.pill.bad { background: var(--badbg); color: var(--bad); }
+.pill.warn { background: var(--warnbg); color: var(--warn); }
+.pill.idle { background: var(--idlebg); color: var(--idle); }
+.jobbtn { background: none; border: 0; padding: 0; cursor: pointer; font-weight: 600; text-align: left; }
+.jobbtn::before { content: "\25B8"; display: inline-block; width: 1.1em; color: var(--muted); }
+.jobbtn[aria-expanded="true"]::before { content: "\25BE"; }
+tr.detail > td { background: var(--bg); padding: .5rem .75rem 1rem 1.9rem; white-space: normal; }
+.runs { max-height: 16rem; overflow: auto; }
+.runs table td, .runs table th { padding: .3rem .5rem; font-size: .9rem; }
+.empty { padding: 2rem 1rem; text-align: center; color: var(--muted); }
+
+.tl { min-width: 44rem; }
+.tl-row { display: grid; grid-template-columns: 15rem 1fr; align-items: center; height: 1.7rem; }
+.tl-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .85rem; padding-right: .5rem; }
+.tl-track {
+  position: relative; height: 100%;
+  background-image: linear-gradient(to right, var(--line) 1px, transparent 1px);
+  background-size: 12.5% 100%;
+  border-right: 1px solid var(--line);
+}
+.tl-track.axis { height: 1.4rem; font-size: .75rem; color: var(--muted); background: none; border: 0; }
+.tl-track.axis span { position: absolute; transform: translateX(-50%); }
+.seg { position: absolute; top: 5px; bottom: 5px; border-radius: 3px; background: var(--ok); min-width: 3px; }
+.seg.bad { background: var(--bad); }
+.seg.warn { background: var(--warn); }
+.note { color: var(--muted); font-size: .85rem; margin: .6rem 0 0; }
+[hidden] { display: none !important; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<main>
+  <header class="top">
+    <div>
+      <h1>BDR replication report</h1>
+      <p class="muted" id="source">Loading data…</p>
+    </div>
+    <div class="datebar">
+      <button class="btn" id="prev" aria-label="Previous day">&#8249;</button>
+      <label>Date <input type="date" id="date"></label>
+      <button class="btn" id="next" aria-label="Next day">&#8250;</button>
+      <button class="btn" id="latest">Latest day</button>
+      <button class="btn" id="load">Load data file</button>
+      <button class="btn" id="export">Export CSV</button>
+      <input type="file" id="file" accept=".json,application/json" hidden>
+    </div>
+  </header>
+  <p class="banner" id="banner" hidden></p>
+
+  <div id="results">
+    <section class="cards" id="cards" aria-label="Summary for the selected day"></section>
+    <p class="attention" id="attention" hidden></p>
+
+    <section class="panel" aria-labelledby="h-cat">
+      <h2 id="h-cat">By policy group</h2>
+      <div class="scroll"><table class="cat-table" id="cats"></table></div>
+    </section>
+
+    <section class="panel" aria-labelledby="h-jobs">
+      <h2 id="h-jobs">All jobs</h2>
+      <div class="filters">
+        <select id="f-cat" aria-label="Filter by group"></select>
+        <select id="f-status" aria-label="Filter by status">
+          <option value="">All statuses</option>
+          <option>Success</option><option>Failed</option><option>Running</option><option>Not run</option>
+        </select>
+        <input type="search" id="f-text" placeholder="Search job name" aria-label="Search job name">
+        <div class="tabs" role="tablist">
+          <button role="tab" id="tab-table" aria-selected="true">Table</button>
+          <button role="tab" id="tab-tl" aria-selected="false">Timeline</button>
+        </div>
+      </div>
+      <div class="scroll" id="view-table"><table id="jobs"></table></div>
+      <div class="scroll" id="view-tl" hidden><div class="tl" id="timeline"></div></div>
+      <p class="note">Jobs that run several times a day (such as the 15-minute syncs) show the first start, the last end, the sum of run times and the sum of data. Select a job name to see each run.</p>
+    </section>
+  </div>
+  <div class="panel empty" id="nodata" hidden></div>
+</main>
+
+<script>
+(function () {
+  "use strict";
+  var TZ_DEFAULT = "Asia/Kolkata";   // change if your cluster reports in another zone
+  var CATS = ["Databases", "Real-time tables", "Fact tables", "HDFS", "Sqoop", "Cron"];
+  var TZ = TZ_DEFAULT, fDay, fTime;
+  var STATE = null, DAY = null, ROWS = [];
+  var OPEN = {}, SORT = { key: "start", dir: 1 }, VIEW = "table";
+
+  function $(s) { return document.querySelector(s); }
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+
+  /* ---------- formatting ---------- */
+  function setupFormatters() {
+    fDay = new Intl.DateTimeFormat("en-CA", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit" });
+    fTime = new Intl.DateTimeFormat("en-GB", { timeZone: TZ, hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" });
+  }
+  function dayKey(ms) { return fDay.format(new Date(ms)); }
+  function timeStr(ms) { return ms == null ? "—" : fTime.format(new Date(ms)); }
+  function tod(ms) { var p = fTime.format(new Date(ms)).split(":"); return (+p[0]) * 3600 + (+p[1]) * 60 + (+p[2]); }
+  function fmtDur(ms) {
+    if (ms == null) return "—";
+    var s = Math.round(ms / 1000);
+    if (s <= 0) return "0s";
+    var h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), x = s % 60, out = [];
+    if (h) out.push(h + "h");
+    if (h || m) out.push(String(m).padStart(h ? 2 : 1, "0") + "m");
+    out.push(String(x).padStart(h || m ? 2 : 1, "0") + "s");
+    return out.join(" ");
+  }
+  function fmtBytes(b) {
+    if (!b) return "0 B";
+    var u = ["B", "KB", "MB", "GB", "TB", "PB"], i = 0;
+    while (b >= 1024 && i < u.length - 1) { b /= 1024; i++; }
+    return (i === 0 ? Math.round(b) : b.toFixed(b >= 100 ? 0 : b >= 10 ? 1 : 2)) + " " + u[i];
+  }
+  function endLabel(r, day) {
+    if (r.end == null) return r.status === "Running" ? "running" : "—";
+    return timeStr(r.end) + (dayKey(r.end) !== day ? " (+1d)" : "");
+  }
+  function pill(status) {
+    var c = { "Success": "ok", "Failed": "bad", "Running": "warn", "Not run": "idle" }[status] || "idle";
+    return '<span class="pill ' + c + '">' + esc(status) + "</span>";
+  }
+
+  /* ---------- data preparation ---------- */
+  function prepare(data) {
+    TZ = data.timezone || TZ_DEFAULT;
+    setupFormatters();
+    var expected = new Map(), byDay = new Map();
+    (data.expected || []).forEach(function (j) { expected.set(j.job, { job: j.job, category: j.category || "Other" }); });
+    (data.runs || []).forEach(function (r) {
+      var s = Date.parse(r.start);
+      if (isNaN(s)) return;
+      var e = r.end ? Date.parse(r.end) : null;
+      var st = String(r.status || "").toUpperCase();
+      if (e == null && st !== "FAILED") st = "RUNNING";
+      var run = { job: r.job, s: s, e: e, status: st, bytes: Number(r.bytes) || 0, message: r.message || "" };
+      if (!expected.has(r.job)) expected.set(r.job, { job: r.job, category: r.category || "Other" });
+      var d = dayKey(s);
+      if (!byDay.has(d)) byDay.set(d, new Map());
+      var m = byDay.get(d);
+      if (!m.has(r.job)) m.set(r.job, []);
+      m.get(r.job).push(run);
+    });
+    STATE = { expected: Array.from(expected.values()), byDay: byDay, days: Array.from(byDay.keys()).sort(), generated: data.generated };
+  }
+
+  function aggregate(day) {
+    var m = STATE.byDay.get(day) || new Map();
+    return STATE.expected.map(function (j) {
+      var runs = (m.get(j.job) || []).slice().sort(function (a, b) { return a.s - b.s; });
+      var o = { job: j.job, category: j.category, runs: runs, status: "Not run", start: null, end: null, dur: 0, bytes: 0, failed: 0 };
+      var running = 0, lastEnd = null;
+      runs.forEach(function (r) {
+        o.bytes += r.bytes;
+        if (r.status === "FAILED") o.failed++;
+        if (r.status === "RUNNING") running++;
+        if (r.e != null) { o.dur += r.e - r.s; lastEnd = lastEnd == null ? r.e : Math.max(lastEnd, r.e); }
+      });
+      if (runs.length) {
+        o.start = runs[0].s;
+        o.status = o.failed ? "Failed" : running ? "Running" : "Success";
+        o.end = running ? null : lastEnd;
+      }
+      return o;
+    });
+  }
+
+  /* ---------- rendering ---------- */
+  function renderSummary(rows) {
+    var ok = 0, bad = 0, idle = 0, run = 0, bytes = 0, dur = 0, first = null, last = null;
+    rows.forEach(function (r) {
+      if (r.status === "Success") ok++; else if (r.status === "Failed") bad++; else if (r.status === "Running") run++; else idle++;
+      bytes += r.bytes; dur += r.dur;
+      if (r.start != null) first = first == null ? r.start : Math.min(first, r.start);
+      if (r.end != null) last = last == null ? r.end : Math.max(last, r.end);
+    });
+    var cards = [
+      ["Jobs scheduled", rows.length, (rows.length - idle) + " ran", ""],
+      ["Succeeded", ok, "", ok === rows.length ? "ok" : ""],
+      ["Failed", bad, "", bad ? "bad" : ""],
+      ["Not run", idle, run ? run + " still running" : "", idle ? "bad" : ""],
+      ["Data transferred", fmtBytes(bytes), "", ""],
+      ["Total run time", fmtDur(dur), first != null ? "First start " + timeStr(first) + (last != null ? ", last end " + timeStr(last) : "") : "", ""]
+    ];
+    $("#cards").innerHTML = cards.map(function (c) {
+      return '<div class="card"><div class="k">' + c[0] + '</div><div class="v ' + c[3] + '">' + c[1] + '</div><div class="s">' + esc(c[2]) + "</div></div>";
+    }).join("");
+
+    var att = rows.filter(function (r) { return r.status === "Failed" || r.status === "Not run"; });
+    var el = $("#attention");
+    if (att.length) {
+      var names = att.slice(0, 10).map(function (r) { return r.job + " (" + r.status.toLowerCase() + ")"; }).join(", ");
+      el.textContent = "Needs attention: " + names + (att.length > 10 ? " and " + (att.length - 10) + " more" : "") + ".";
+      el.hidden = false;
+    } else el.hidden = true;
+  }
+
+  function orderedCats(rows) {
+    var seen = {};
+    rows.forEach(function (r) { seen[r.category] = 1; });
+    var out = CATS.filter(function (c) { return seen[c]; });
+    Object.keys(seen).forEach(function (c) { if (out.indexOf(c) < 0) out.push(c); });
+    return out;
+  }
+
+  function renderCats(rows) {
+    var html = "<thead><tr><th>Group</th><th class='num'>Jobs</th><th class='num'>Succeeded</th><th class='num'>Failed</th><th class='num'>Not run</th><th class='num'>Data transferred</th><th class='num'>Total run time</th></tr></thead><tbody>";
+    orderedCats(rows).forEach(function (c) {
+      var g = rows.filter(function (r) { return r.category === c; });
+      var ok = 0, bad = 0, idle = 0, b = 0, d = 0;
+      g.forEach(function (r) {
+        if (r.status === "Success") ok++; else if (r.status === "Failed") bad++; else if (r.status === "Not run") idle++;
+        b += r.bytes; d += r.dur;
+      });
+      html += "<tr><td>" + esc(c) + "</td><td class='num'>" + g.length + "</td><td class='num'>" + ok + "</td><td class='num'" + (bad ? " style='color:var(--bad);font-weight:700'" : "") + ">" + bad + "</td><td class='num'" + (idle ? " style='color:var(--bad);font-weight:700'" : "") + ">" + idle + "</td><td class='num'>" + fmtBytes(b) + "</td><td class='num'>" + fmtDur(d) + "</td></tr>";
+    });
+    $("#cats").innerHTML = html + "</tbody>";
+  }
+
+  var RANK = { "Failed": 0, "Running": 1, "Not run": 2, "Success": 3 };
+  var GET = {
+    job: function (r) { return r.job.toLowerCase(); },
+    category: function (r) { var i = CATS.indexOf(r.category); return i < 0 ? 99 : i; },
+    status: function (r) { return RANK[r.status]; },
+    runs: function (r) { return r.runs.length; },
+    start: function (r) { return r.start; },
+    end: function (r) { return r.end; },
+    dur: function (r) { return r.runs.length ? r.dur : null; },
+    bytes: function (r) { return r.runs.length ? r.bytes : null; }
+  };
+
+  function filtered() {
+    var c = $("#f-cat").value, s = $("#f-status").value, t = $("#f-text").value.trim().toLowerCase();
+    var list = ROWS.filter(function (r) {
+      return (!c || r.category === c) && (!s || r.status === s) && (!t || r.job.toLowerCase().indexOf(t) >= 0);
+    });
+    var g = GET[SORT.key];
+    list.sort(function (a, b) {
+      var x = g(a), y = g(b);
+      if (x == null && y == null) return a.job.localeCompare(b.job);
+      if (x == null) return 1;
+      if (y == null) return -1;
+      if (x < y) return -SORT.dir;
+      if (x > y) return SORT.dir;
+      return a.job.localeCompare(b.job);
+    });
+    return list;
+  }
+
+  function renderTable(list) {
+    var cols = [["job", "Job name"], ["category", "Group"], ["status", "Status"], ["runs", "Runs", "num"], ["start", "Start"], ["end", "End"], ["dur", "Time taken", "num"], ["bytes", "Data transferred", "num"]];
+    var html = "<thead><tr>" + cols.map(function (c) {
+      var sort = SORT.key === c[0] ? (SORT.dir === 1 ? "ascending" : "descending") : "none";
+      return '<th class="' + (c[2] || "") + '" aria-sort="' + sort + '"><button data-k="' + c[0] + '">' + c[1] + "</button></th>";
+    }).join("") + "</tr></thead><tbody>";
+    if (!list.length) html += '<tr><td colspan="8" class="empty">No jobs match these filters.</td></tr>';
+    list.forEach(function (r) {
+      var open = !!OPEN[r.job] && r.runs.length;
+      var runsTxt = r.runs.length ? String(r.runs.length) + (r.failed ? " (" + r.failed + " failed)" : "") : "0";
+      html += "<tr><td>" + (r.runs.length
+        ? '<button class="jobbtn" data-job="' + esc(r.job) + '" aria-expanded="' + (open ? "true" : "false") + '">' + esc(r.job) + "</button>"
+        : "<span style='padding-left:1.1em'>" + esc(r.job) + "</span>") + "</td>" +
+        "<td>" + esc(r.category) + "</td><td>" + pill(r.status) + "</td><td class='num'>" + runsTxt + "</td>" +
+        "<td>" + timeStr(r.start) + "</td><td>" + endLabel(r, DAY) + "</td>" +
+        "<td class='num'>" + (r.runs.length ? fmtDur(r.dur) : "—") + "</td><td class='num'>" + (r.runs.length ? fmtBytes(r.bytes) : "—") + "</td></tr>";
+      if (open) {
+        html += '<tr class="detail"><td colspan="8"><div class="runs"><table><thead><tr><th>Start</th><th>End</th><th class="num">Time taken</th><th>Status</th><th class="num">Data transferred</th><th>Message</th></tr></thead><tbody>';
+        r.runs.forEach(function (u) {
+          var st = u.status === "FAILED" ? "Failed" : u.status === "RUNNING" ? "Running" : "Success";
+          html += "<tr><td>" + timeStr(u.s) + "</td><td>" + (u.e == null ? "running" : timeStr(u.e)) + "</td><td class='num'>" + (u.e == null ? "—" : fmtDur(u.e - u.s)) + "</td><td>" + pill(st) + "</td><td class='num'>" + fmtBytes(u.bytes) + "</td><td style='white-space:normal'>" + esc(u.message) + "</td></tr>";
+        });
+        html += "</tbody></table></div></td></tr>";
+      }
+    });
+    $("#jobs").innerHTML = html + "</tbody>";
+  }
+
+  function renderTimeline(list) {
+    var rows = list.filter(function (r) { return r.runs.length; }).sort(function (a, b) { return a.start - b.start; });
+    var skipped = list.length - rows.length;
+    var html = '<div class="tl-row"><div></div><div class="tl-track axis">';
+    for (var h = 0; h <= 24; h += 3) html += '<span style="left:' + (h / 24 * 100) + '%">' + String(h).padStart(2, "0") + ":00</span>";
+    html += "</div></div>";
+    rows.forEach(function (r) {
+      html += '<div class="tl-row"><div class="tl-label" title="' + esc(r.job) + '">' + esc(r.job) + '</div><div class="tl-track">';
+      r.runs.forEach(function (u) {
+        var left = tod(u.s) / 864;
+        var endMs = u.e == null ? Math.max(Date.now(), u.s) : u.e;
+        var w = Math.max((endMs - u.s) / 1000 / 864, 0.3);
+        if (left + w > 100) w = 100 - left;
+        var cls = u.status === "FAILED" ? "bad" : u.status === "RUNNING" ? "warn" : "";
+        var tip = r.job + ": " + timeStr(u.s) + " to " + (u.e == null ? "running" : timeStr(u.e)) + ", " + fmtBytes(u.bytes);
+        html += '<div class="seg ' + cls + '" style="left:' + left + "%;width:" + w + '%" title="' + esc(tip) + '"></div>';
+      });
+      html += "</div></div>";
+    });
+    if (!rows.length) html += '<div class="empty">Nothing ran for these filters.</div>';
+    if (skipped) html += '<p class="note">' + skipped + " job(s) with no run are not drawn.</p>";
+    $("#timeline").innerHTML = html;
+  }
+
+  function renderList() {
+    var list = filtered();
+    renderTable(list);
+    renderTimeline(list);
+  }
+
+  function setDay(day) {
+    DAY = day;
+    $("#date").value = day;
+    var has = STATE.byDay.has(day);
+    $("#results").hidden = !has;
+    $("#nodata").hidden = has;
+    if (!has) {
+      $("#nodata").textContent = "No run data was collected for " + day + (STATE.days.length ? ". Data covers " + STATE.days[0] + " to " + STATE.days[STATE.days.length - 1] + "." : ".");
+      return;
+    }
+    ROWS = aggregate(day);
+    OPEN = {};
+    renderSummary(ROWS);
+    renderCats(ROWS);
+    var sel = $("#f-cat"), cur = sel.value;
+    sel.innerHTML = '<option value="">All groups</option>' + orderedCats(ROWS).map(function (c) { return "<option>" + esc(c) + "</option>"; }).join("");
+    sel.value = cur;
+    renderList();
+  }
+
+  /* ---------- loading ---------- */
+  function load(data, label, isDemo) {
+    prepare(data);
+    var d = $("#date");
+    if (STATE.days.length) { d.min = STATE.days[0]; d.max = STATE.days[STATE.days.length - 1]; }
+    var gen = data.generated ? new Date(data.generated) : null;
+    $("#source").textContent = (isDemo ? "Demo data" : "Data from " + label) +
+      (gen && !isNaN(gen) ? ", collected " + gen.toLocaleString("en-GB", { timeZone: TZ, dateStyle: "medium", timeStyle: "short" }) : "") +
+      " (times in " + TZ + ")";
+    var b = $("#banner");
+    b.hidden = !isDemo;
+    if (isDemo) b.textContent = "Showing demo data. Put the data.json from collect_bdr.py next to this page and open it through a web server, or choose the file with Load data file.";
+    setDay(STATE.days.length ? STATE.days[STATE.days.length - 1] : dayKey(Date.now()));
+  }
+
+  function shift(n) {
+    var t = new Date(DAY + "T00:00:00Z").getTime() + n * 86400000;
+    var k = new Date(t).toISOString().slice(0, 10);
+    if (STATE.days.length && (k < STATE.days[0] || k > STATE.days[STATE.days.length - 1])) return;
+    setDay(k);
+  }
+
+  function exportCsv() {
+    var q = function (v) { v = String(v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+    var lines = [["Job name", "Group", "Status", "Runs", "Failed runs", "Start", "End", "Time taken (seconds)", "Data transferred (bytes)"].join(",")];
+    filtered().forEach(function (r) {
+      lines.push([r.job, r.category, r.status, r.runs.length, r.failed, r.start == null ? "" : timeStr(r.start), r.end == null ? "" : timeStr(r.end), Math.round(r.dur / 1000), r.bytes].map(q).join(","));
+    });
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([lines.join("\n")], { type: "text/csv" }));
+    a.download = "bdr-report-" + DAY + ".csv";
+    document.body.appendChild(a); a.click(); a.remove();
+  }
+
+  /* ---------- demo data (used only when no data.json is found) ---------- */
+  function mulberry32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; var t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+  function makeDemo() {
+    var rnd = mulberry32(42), pad = function (n, w) { return String(n).padStart(w || 2, "0"); };
+    var between = function (a, b) { return a + rnd() * (b - a); };
+    var jobs = [], i;
+    for (i = 1; i <= 26; i++) jobs.push({ job: "demo_db_" + pad(i), category: "Databases", at: 30 + i * 4, dur: [2, 25], gb: [0.3, 25] });
+    ["bsedb_impala_trade_fact_1809", "bsedb_impala_order_fact_1809", "Fact_egrdb_bcxdb_impala_1809"].forEach(function (n, k) { jobs.push({ job: n, category: "Fact tables", at: 150 + k * 35, dur: [25, 70], gb: [40, 220] }); });
+    ["iccl_output_files_hdfs", "incoming_hdfs", "staging_hdfs", "sebicotf_hdfs", "Amit_kudu_test", "backupdata_hdfs", "backupdata_1_bkp_hdfs"].forEach(function (n, k) { jobs.push({ job: n, category: "HDFS", at: 120 + k * 12, dur: [3, 40], gb: [1, 300] }); });
+    for (i = 1; i <= 19; i++) jobs.push({ job: "sqoop_job_" + pad(i), category: "Sqoop", at: 200 + i * 9, dur: [4, 35], gb: [0.5, 40] });
+    for (i = 1; i <= 5; i++) jobs.push({ job: "cron_job_" + i, category: "Cron", at: 380 + i * 20, dur: [1, 10], gb: [0, 2] });
+    var rt = ["NTA_REAL_TIME_DATA_SYNC", "session_logins_active_2109"];
+    var expected = jobs.map(function (j) { return { job: j.job, category: j.category }; });
+    rt.forEach(function (n) { expected.push({ job: n, category: "Real-time tables" }); });
+
+    var runs = [], now = Date.now();
+    function iso(day, sec) { return day + "T" + pad(Math.floor(sec / 3600)) + ":" + pad(Math.floor(sec % 3600 / 60)) + ":" + pad(Math.floor(sec % 60)) + "+05:30"; }
+    function add(job, cat, day, startSec, durSec, gb, failChance) {
+      var s = iso(day, startSec), sMs = Date.parse(s);
+      if (sMs > now) return;
+      var eMs = sMs + durSec * 1000, bad = rnd() < failChance;
+      var running = eMs > now;
+      runs.push({
+        job: job, category: cat, start: s,
+        end: running ? null : new Date(eMs).toISOString(),
+        status: running ? "RUNNING" : bad ? "FAILED" : "SUCCESS",
+        bytes: bad ? 0 : Math.round(gb * 1073741824),
+        message: bad ? "Replication failed: connection reset by source cluster" : ""
+      });
+    }
+    var tz = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit" });
+    for (var k = 13; k >= 0; k--) {
+      var day = tz.format(new Date(now - k * 86400000));
+      jobs.forEach(function (j) {
+        if (rnd() < 0.012) return;                       // job skipped that day
+        var dur = between(j.dur[0], j.dur[1]) * 60;
+        add(j.job, j.category, day, (j.at + between(-2, 2)) * 60, dur, between(j.gb[0], j.gb[1]), 0.03);
+      });
+      rt.forEach(function (n, idx) {
+        for (var slot = 0; slot < 96; slot++) add(n, "Real-time tables", day, slot * 900 + idx * 30, between(15, 80), between(0.01, idx ? 0.2 : 0.6), 0.008);
+      });
+    }
+    return { timezone: "Asia/Kolkata", generated: new Date().toISOString(), expected: expected, runs: runs };
+  }
+
+  /* ---------- events ---------- */
+  $("#date").addEventListener("change", function (e) { if (e.target.value) setDay(e.target.value); });
+  $("#prev").addEventListener("click", function () { shift(-1); });
+  $("#next").addEventListener("click", function () { shift(1); });
+  $("#latest").addEventListener("click", function () { if (STATE.days.length) setDay(STATE.days[STATE.days.length - 1]); });
+  $("#export").addEventListener("click", exportCsv);
+  $("#load").addEventListener("click", function () { $("#file").click(); });
+  $("#file").addEventListener("change", function (e) {
+    var f = e.target.files[0];
+    if (!f) return;
+    var rd = new FileReader();
+    rd.onload = function () {
+      try { load(JSON.parse(rd.result), f.name, false); }
+      catch (err) { alert("That file is not valid JSON from collect_bdr.py: " + err.message); }
+    };
+    rd.readAsText(f);
+    e.target.value = "";
+  });
+  ["#f-cat", "#f-status"].forEach(function (s) { $(s).addEventListener("change", renderList); });
+  $("#f-text").addEventListener("input", renderList);
+  $("#jobs").addEventListener("click", function (e) {
+    var sortBtn = e.target.closest("th button");
+    if (sortBtn) {
+      var k = sortBtn.dataset.k;
+      SORT = SORT.key === k ? { key: k, dir: -SORT.dir } : { key: k, dir: 1 };
+      renderList(); return;
+    }
+    var jb = e.target.closest(".jobbtn");
+    if (jb) { OPEN[jb.dataset.job] = !OPEN[jb.dataset.job]; renderList(); }
+  });
+  function setView(v) {
+    VIEW = v;
+    $("#view-table").hidden = v !== "table";
+    $("#view-tl").hidden = v !== "tl";
+    $("#tab-table").setAttribute("aria-selected", v === "table");
+    $("#tab-tl").setAttribute("aria-selected", v === "tl");
+  }
+  $("#tab-table").addEventListener("click", function () { setView("table"); });
+  $("#tab-tl").addEventListener("click", function () { setView("tl"); });
+
+  /* ---------- start ---------- */
+  fetch("data.json", { cache: "no-store" })
+    .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(function (d) { load(d, "data.json", false); })
+    .catch(function () { load(makeDemo(), "", true); });
+})();
+</script>
+</body>
+</html>
